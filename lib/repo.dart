@@ -20,54 +20,54 @@ class VideoRepository {
     ),
   );
 
-  final List<VideoModel> _videos = [
-    VideoModel(
-      id: '1',
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    ),
+    final List<VideoModel> _videos = [
+      VideoModel(
+        id: '1',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      ),
 
-    VideoModel(
-      id: '2',
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    ),
-    VideoModel(
-      id: '3',
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WhatCarCanYouGetForAGrand.mp4',
-    ),
-    VideoModel(
-      id: '4',
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4',
-    ),
+      VideoModel(
+        id: '2',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+      ),
+      VideoModel(
+        id: '3',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WhatCarCanYouGetForAGrand.mp4',
+      ),
+      VideoModel(
+        id: '4',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4',
+      ),
 
-    VideoModel(
-      id: '5',
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    ),
+      VideoModel(
+        id: '5',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+      ),
 
-    VideoModel(
-      id: '6',
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-    ),
-    VideoModel(
-      id: '7',
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-    ),
-    VideoModel(
-      id: '8',
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-    ),
-    VideoModel(
-      id: '9',
-      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
-    ),
-
-
+      VideoModel(
+        id: '6',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+      ),
+      VideoModel(
+        id: '7',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+      ),
+      VideoModel(
+        id: '8',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+      ),
+      VideoModel(
+        id: '9',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
+      ),
 
 
 
 
 
-  ];
+
+
+    ];
   List<VideoModel> getVideos() => _videos;
 
   /// Returns a cached file for [url]. If not cached, downloads in an isolate then stores it.
