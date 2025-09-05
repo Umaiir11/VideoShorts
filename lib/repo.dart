@@ -23,26 +23,51 @@ class VideoRepository {
   final List<VideoModel> _videos = [
     VideoModel(
       id: '1',
-      url:
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
     ),
+
     VideoModel(
       id: '2',
-      url:
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
     ),
     VideoModel(
       id: '3',
-      url:
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WhatCarCanYouGetForAGrand.mp4',
     ),
     VideoModel(
       id: '4',
-      url:
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4',
     ),
-  ];
 
+    VideoModel(
+      id: '5',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+    ),
+
+    VideoModel(
+      id: '6',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+    ),
+    VideoModel(
+      id: '7',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+    ),
+    VideoModel(
+      id: '8',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+    ),
+    VideoModel(
+      id: '9',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
+    ),
+
+
+
+
+
+
+
+  ];
   List<VideoModel> getVideos() => _videos;
 
   /// Returns a cached file for [url]. If not cached, downloads in an isolate then stores it.
@@ -53,9 +78,13 @@ class VideoRepository {
         debugPrint('[VideoRepository] cache hit for $url');
         return cached.file;
       } else {
-        debugPrint('[VideoRepository] cache miss for $url => downloading in isolate');
+        debugPrint(
+          '[VideoRepository] cache miss for $url => downloading in isolate',
+        );
         final bytes = await compute<_DownloadRequest, Uint8List>(
-            _downloadBytesIsolate, _DownloadRequest(url, null));
+          _downloadBytesIsolate,
+          _DownloadRequest(url, null),
+        );
         final file = await cacheManager.putFile(
           url,
           bytes,
@@ -66,8 +95,10 @@ class VideoRepository {
     } catch (e) {
       debugPrint('[VideoRepository] getCachedFile ERROR: $e');
       // fallback try direct network download on main isolate
-      final resp =
-      await _dio.get<List<int>>(url, options: Options(responseType: ResponseType.bytes));
+      final resp = await _dio.get<List<int>>(
+        url,
+        options: Options(responseType: ResponseType.bytes),
+      );
       final bytes = Uint8List.fromList(resp.data ?? []);
       final file = await cacheManager.putFile(
         url,
@@ -88,12 +119,15 @@ class VideoRepository {
 class _DownloadRequest {
   final String url;
   final Map<String, String>? headers;
+
   _DownloadRequest(this.url, this.headers);
 }
 
 Future<Uint8List> _downloadBytesIsolate(_DownloadRequest req) async {
   final dio = Dio();
-  final resp =
-  await dio.get<List<int>>(req.url, options: Options(responseType: ResponseType.bytes));
+  final resp = await dio.get<List<int>>(
+    req.url,
+    options: Options(responseType: ResponseType.bytes),
+  );
   return Uint8List.fromList(resp.data ?? []);
 }

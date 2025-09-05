@@ -32,7 +32,7 @@ class VideoFeedController extends GetxController {
     final controller = VideoPlayerController.file(File(file.path));
     await controller.initialize();
     controller.setLooping(true);
-    // Optionally set volume or format here
+    controller.pause(); // ✅ always start paused
     return controller;
   }
 
@@ -110,23 +110,28 @@ class VideoFeedController extends GetxController {
   }
 
   /// Called when PageView page changes
+  /// Called when PageView page changes
   void onPageChanged(int index) {
     final prevIndex = currentIndex.value;
     debugPrint('[VideoFeedController] page changed from $prevIndex to $index');
 
-    // Pause previous (if loaded)
-    final prevCtrl = _controllers[prevIndex];
-    try {
-      prevCtrl?.pause();
-    } catch (_) {}
+    currentIndex.value = index;
 
-    // update and preload new window
+    // Pause ALL controllers except the new index
+    _controllers.forEach((key, ctrl) {
+      if (key != index) {
+        try {
+          ctrl.pause();
+        } catch (_) {}
+      }
+    });
+
+    // Preload nearby videos
     preloadWindow(index);
 
-    // Play current once ready (if ready immediately)
+    // Play the current one (if ready)
     final now = _controllers[index];
     if (now != null && now.value.isInitialized) {
-      // small delay to ensure buffer has started
       Future.delayed(const Duration(milliseconds: 80), () {
         try {
           now.play();
