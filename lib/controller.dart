@@ -1,4 +1,3 @@
-// lib/app/mvvm/controller/video_feed_controller.dart
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:fuzzintest/repo.dart';
@@ -26,14 +25,38 @@ class VideoFeedController extends GetxController {
     preloadWindow(0);
   }
 
-  /// Create VideoPlayerController from cached file (downloads in isolate if needed)
+  /// Create VideoPlayerController intelligently:
+  /// - If URL is HLS/DASH manifest (.m3u8 or .mpd), use network controller and stream.
+  /// - Otherwise, download via repository (isolate) and play from cached file.
   Future<VideoPlayerController> _createControllerFromUrl(String url) async {
-    final file = await _repository.getCachedFile(url);
-    final controller = VideoPlayerController.file(File(file.path));
-    await controller.initialize();
-    controller.setLooping(true);
-    controller.pause(); // ✅ always start paused
-    return controller;
+    // If manifest -> use network streaming (ExoPlayer/AVPlayer will handle HLS/DASH)
+    if (_repository.isStreamManifest(url)) {
+      debugPrint('[VideoFeedController] creating network controller for manifest: $url');
+      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+      await controller.initialize();
+      controller.setLooping(true);
+      controller.pause();
+      return controller;
+    }
+
+    // Progressive file -> cache first (downloads in isolate)
+    final file = await _repository.getCachedFileIfProgressive(url);
+    if (file != null && await file.exists()) {
+      debugPrint('[VideoFeedController] creating file controller from cache: ${file.path}');
+      final controller = VideoPlayerController.file(File(file.path));
+      await controller.initialize();
+      controller.setLooping(true);
+      controller.pause();
+      return controller;
+    }
+
+    // Fallback: network controller (if cache failed)
+    debugPrint('[VideoFeedController] cache unavailable, falling back to network for $url');
+    final fallback = VideoPlayerController.networkUrl(Uri.parse(url));
+    await fallback.initialize();
+    fallback.setLooping(true);
+    fallback.pause();
+    return fallback;
   }
 
   /// Preload controllers for [index] .. [index + poolSize - 1]
@@ -92,10 +115,75 @@ class VideoFeedController extends GetxController {
     });
   }
 
+  /// Called when PageView page changes
+  void onPageChanged(int index) async {
+    final prevIndex = currentIndex.value;
+    currentIndex.value = index;
+
+    debugPrint('[VideoFeedController] page changed $prevIndex -> $index');
+
+    // 1. Pause all controllers except current
+    _controllers.forEach((key, ctrl) {
+      if (key != index) {
+        try {
+          ctrl.pause();
+        } catch (_) {}
+      }
+    });
+
+    // 2. Ensure current video plays
+    final currentCtrl = _controllers[index];
+    if (currentCtrl != null && currentCtrl.value.isInitialized) {
+      Future.delayed(const Duration(milliseconds: 80), () {
+        try {
+          currentCtrl.play();
+        } catch (_) {}
+      });
+    } else {
+      // If not ready, preload now
+      await _preloadSingle(index, play: true);
+    }
+
+    // 3. Preload next video silently (paused)
+    if (index + 1 < videos.length) {
+      _preloadSingle(index + 1, play: false);
+    }
+
+    // 4. Keep only prev video for resume, dispose others
+    _disposeFarControllers(index);
+  }
+
+  /// Preload a single video by index
+  Future<void> _preloadSingle(int index, {bool play = false}) async {
+    if (_controllers.containsKey(index)) return;
+
+    try {
+      final ctrl = await _createControllerFromUrl(videos[index].url);
+      if (!isClosed) {
+        _controllers[index] = ctrl;
+
+        if (play) {
+          ctrl.play();
+        } else {
+          ctrl.pause();
+        }
+
+        update();
+      } else {
+        ctrl.dispose();
+      }
+    } catch (e) {
+      debugPrint('[VideoFeedController] preload failed for $index -> $e');
+    }
+  }
+
+  /// Dispose everything except [index], [index - 1], [index + 1]
   void _disposeFarControllers(int currentIdx) {
+    final keep = {currentIdx, currentIdx - 1, currentIdx + 1};
+
     final keys = List<int>.from(_controllers.keys);
     for (final key in keys) {
-      if (key < currentIdx || key >= currentIdx + poolSize) {
+      if (!keep.contains(key)) {
         final c = _controllers.remove(key);
         try {
           c?.dispose();
@@ -105,39 +193,7 @@ class VideoFeedController extends GetxController {
         }
       }
     }
-    // notify if controllers changed
     update();
-  }
-
-  /// Called when PageView page changes
-  /// Called when PageView page changes
-  void onPageChanged(int index) {
-    final prevIndex = currentIndex.value;
-    debugPrint('[VideoFeedController] page changed from $prevIndex to $index');
-
-    currentIndex.value = index;
-
-    // Pause ALL controllers except the new index
-    _controllers.forEach((key, ctrl) {
-      if (key != index) {
-        try {
-          ctrl.pause();
-        } catch (_) {}
-      }
-    });
-
-    // Preload nearby videos
-    preloadWindow(index);
-
-    // Play the current one (if ready)
-    final now = _controllers[index];
-    if (now != null && now.value.isInitialized) {
-      Future.delayed(const Duration(milliseconds: 80), () {
-        try {
-          now.play();
-        } catch (_) {}
-      });
-    }
   }
 
   void togglePlayPause(int index) {
