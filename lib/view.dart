@@ -1,5 +1,5 @@
-// lib/app/mvvm/view/video_feed_view.dart
 import 'package:flutter/material.dart';
+import 'package:fuzzintest/repo.dart';
 import 'package:get/get.dart';
 import 'package:video_player/video_player.dart';
 import 'package:shimmer/shimmer.dart';
@@ -41,12 +41,29 @@ class _VideoPage extends StatefulWidget {
 
 class _VideoPageState extends State<_VideoPage> with SingleTickerProviderStateMixin {
   bool _showPlayIcon = false;
+  bool _isLoading = true;
   late final AnimationController _iconAnim;
 
   @override
   void initState() {
     super.initState();
     _iconAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+    // Check if video is cached to avoid shimmer
+    _checkCacheAndUpdateLoading();
+  }
+
+  Future<void> _checkCacheAndUpdateLoading() async {
+    final url = widget.controller.videos[widget.index].url;
+    final cached = await Get.find<VideoRepository>().getCachedFile(url);
+    if (cached != null || widget.index == 0) {
+      // No shimmer for cached videos or first video
+      setState(() => _isLoading = false);
+    } else {
+      // Delay shimmer for network videos to avoid flicker
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) setState(() => _isLoading = false);
+      });
+    }
   }
 
   @override
@@ -62,20 +79,17 @@ class _VideoPageState extends State<_VideoPage> with SingleTickerProviderStateMi
       _iconAnim.forward(from: 0.0);
     });
     Future.delayed(const Duration(milliseconds: 700), () {
-      if (mounted) {
-        setState(() => _showPlayIcon = false);
-      }
+      if (mounted) setState(() => _showPlayIcon = false);
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // We use GetBuilder here so the widget rebuilds when controller.update() is called
     return GetBuilder<VideoFeedController>(
       init: widget.controller,
       builder: (_) {
         final vController = widget.controller.getController(widget.index);
-        final isReady = vController != null && vController.value.isInitialized;
+        final isReady = vController != null && vController.value.isInitialized && !_isLoading;
 
         return Stack(
           fit: StackFit.expand,

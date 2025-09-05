@@ -1,26 +1,25 @@
-import 'dart:typed_data';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'dart:isolate';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-
+import 'package:path_provider/path_provider.dart';
 import 'model.dart';
 
 class VideoRepository {
   final Dio _dio = Dio();
 
-  // Persistent cache config (1-year TTL, 200 objects)
+  // Persistent cache
   final CacheManager cacheManager = CacheManager(
     Config(
-      'persistentVideoCache',
+      'progressiveVideoCache',
       stalePeriod: const Duration(days: 365),
       maxNrOfCacheObjects: 200,
-      repo: JsonCacheInfoRepository(databaseName: 'videoCache'),
-      fileService: HttpFileService(),
     ),
   );
 
-  /// Demo video list (replace with API later)
+  final Set<String> _cachedUrls = {};
+
   final List<VideoModel> _videos = [
     VideoModel(
       id: '1',
@@ -35,7 +34,7 @@ class VideoRepository {
     VideoModel(
       id: '3',
       url:
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WhatCarCanYouGetForAGrand.mp4',
+      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
     ),
     VideoModel(
       id: '4',
@@ -44,117 +43,96 @@ class VideoRepository {
     ),
     VideoModel(
       id: '5',
-      url:
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    ),
-    VideoModel(
+      url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', // HLS
+    ),VideoModel(
       id: '6',
-      url:
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-    ),
-    VideoModel(
-      id: '7',
-      url:
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-    ),
-    VideoModel(
-      id: '8',
-      url:
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-    ),
-    VideoModel(
-      id: '9',
-      url:
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4', // HLS
+    ),VideoModel(
+      id: '6',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4', // HLS
     ),
   ];
 
+  VideoRepository();
+
+  Future<void> initializeCacheMetadata() async {
+    // Load cached URLs (this is a simplified example; use a proper cache index if needed)
+    for (var video in _videos) {
+      final cached = await cacheManager.getFileFromCache(video.url);
+      if (cached != null && await cached.file.exists()) {
+        _cachedUrls.add(video.url);
+      }
+    }
+  }
+
   List<VideoModel> getVideos() => _videos;
 
-  /// Returns true if the URL is an HLS/DASH manifest (we treat as streaming)
   bool isStreamManifest(String url) {
     final lower = url.toLowerCase();
     return lower.contains('.m3u8') || lower.contains('.mpd');
   }
 
-  /// If URL is HLS/DASH, don't download — stream using network controller.
-  /// For progressive files (mp4), returns cached File (downloads in isolate if needed).
-  Future<File?> getCachedFileIfProgressive(String url,
-      {Map<String, String>? headers}) async {
-    // If it's a streaming manifest, return null — caller should use network stream.
-    if (isStreamManifest(url)) {
-      debugPrint('[VideoRepository] detected stream manifest (no file cache) for $url');
-      return null;
-    }
-
-    try {
-      // 1. Cache Hit
+  /// Returns cache file if exists, else null
+  Future<File?> getCachedFile(String url) async {
+    if (_cachedUrls.contains(url)) {
       final cached = await cacheManager.getFileFromCache(url);
       if (cached != null && await cached.file.exists()) {
-        debugPrint('[VideoRepository] cache HIT for $url');
+        debugPrint('[VideoRepository] cache HIT → $url');
         return cached.file;
+      } else {
+        _cachedUrls.remove(url);
       }
+    }
+    return null;
+  }
 
-      // 2. Cache Miss → download in isolate
-      debugPrint('[VideoRepository] cache MISS for $url → downloading in isolate...');
-      final bytes = await compute<_DownloadRequest, Uint8List>(
-        _downloadBytesIsolate,
-        _DownloadRequest(url, headers),
+  /// Spawn isolate for progressive caching (non-blocking UI)
+  Future<void> cacheInBackground(String url) async {
+    if (isStreamManifest(url)) return;
+
+    if (_cachedUrls.contains(url)) return;
+
+    await compute(_downloadProgressive, {
+      "url": url,
+    });
+    _cachedUrls.add(url); // Update cache metadata after download
+  }
+
+  /// Static function for isolate download
+  static Future<void> _downloadProgressive(Map<String, dynamic> args) async {
+    final url = args['url'] as String;
+    final dio = Dio();
+
+    try {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/${Uri.parse(url).pathSegments.last}');
+      final sink = file.openWrite(mode: FileMode.writeOnly);
+
+      final resp = await dio.get<ResponseBody>(
+        url,
+        options: Options(responseType: ResponseType.stream),
       );
 
-      final file = await cacheManager.putFile(
+      await for (final chunk in resp.data!.stream) {
+        sink.add(chunk);
+      }
+      await sink.close();
+
+      final bytes = await file.readAsBytes();
+      await DefaultCacheManager().putFile(
         url,
         bytes,
         fileExtension: _extractExtension(url),
       );
-      debugPrint('[VideoRepository] cached file saved for $url -> ${file.path}');
-      return file;
+      debugPrint('[VideoRepository] cached in bg → $url');
     } catch (e) {
-      debugPrint('[VideoRepository] getCachedFile ERROR: $e');
-
-      // 3. Fallback → direct download on main isolate
-      final resp = await _dio.get<List<int>>(
-        url,
-        options: Options(
-          responseType: ResponseType.bytes,
-          headers: headers,
-        ),
-      );
-      final bytes = Uint8List.fromList(resp.data ?? []);
-      final file = await cacheManager.putFile(
-        url,
-        bytes,
-        fileExtension: _extractExtension(url),
-      );
-      return file;
+      debugPrint('[VideoRepository] isolate download failed → $e');
     }
   }
 
-  /// Extracts file extension safely
-  String _extractExtension(String url) {
+  static String _extractExtension(String url) {
     final idx = url.lastIndexOf('.');
     if (idx == -1) return 'mp4';
-    return url.substring(idx + 1).split('?').first; // remove query params
+    return url.substring(idx + 1).split('?').first;
   }
-}
-
-/// Request model for isolate downloads
-class _DownloadRequest {
-  final String url;
-  final Map<String, String>? headers;
-
-  _DownloadRequest(this.url, this.headers);
-}
-
-/// Isolate worker for background video downloading
-Future<Uint8List> _downloadBytesIsolate(_DownloadRequest req) async {
-  final dio = Dio();
-  final resp = await dio.get<List<int>>(
-    req.url,
-    options: Options(
-      responseType: ResponseType.bytes,
-      headers: req.headers,
-    ),
-  );
-  return Uint8List.fromList(resp.data ?? []);
 }
